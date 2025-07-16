@@ -783,70 +783,32 @@ bot.on('text', async (ctx) => {
       }
     } catch (e) {
       console.error('Error fetching from Dex Screener:', e);
-      // Dex Screener failed, try Metaplex for Solana tokens
-      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(ctx.message.text)) {
-        try {
-          const { Metaplex } = await import('@metaplex-foundation/js');
-          const { Connection, PublicKey } = await import('@solana/web3.js');
-          const connection = new Connection(SOLANA_RPC);
-          const metaplex = Metaplex.make(connection);
-          const mint = new PublicKey(ctx.message.text);
-          const metadata = await metaplex.nfts().findByMint({ mintAddress: mint });
-          if (metadata) {
-            let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
-            msg += `<b>🌐 Detected network:</b> <b>Solana</b>\n`;
-            msg += `🔹 <b>Token:</b> <b>${metadata.name} (${metadata.symbol})</b>\n`;
-            msg += `<b>➡️ Next:</b> Use the options below.`;
-            safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
-            safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
-            session.tokenAddress = ctx.message.text;
-            session.tradeNetwork = 'Solana';
-            session.lastStep = session.step;
-            session.step = undefined;
-            userSessions[ctx.from.id] = session;
+      // Dex Screener failed, show fallback message and menu
+      let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
+      msg += `<b>⚠️ Token not found on Dex Screener. This token may have very low liquidity or is not listed.\nProceed with caution.</b>\n`;
+      msg += '\n<b>➡️ Next:</b> Use the options below.';
+      safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+      safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
+      session.tokenAddress = ctx.message.text;
+      session.tradeNetwork = getNetworkFromAddress(ctx.message.text, session) || 'Unknown';
+      session.lastStep = session.step;
+      session.step = undefined;
+      userSessions[ctx.from.id] = session;
       return;
-          }
-        } catch (e2) {
-          safeReplyWithHTML(ctx, 'Could not detect token info from Dex Screener or Metaplex. Please check the address and try again.', ENTER_TOKEN_MENU);
-          return;
-        }
-      } else {
-        safeReplyWithHTML(ctx, 'Could not detect network from Dex Screener. Please check the address and try again.', ENTER_TOKEN_MENU);
-        return;
-      }
     }
     if (!net) {
-      // Try Metaplex for Solana tokens if not already tried
-      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(ctx.message.text)) {
-        try {
-          const { Metaplex } = await import('@metaplex-foundation/js');
-          const { Connection, PublicKey } = await import('@solana/web3.js');
-          const connection = new Connection(SOLANA_RPC);
-          const metaplex = Metaplex.make(connection);
-          const mint = new PublicKey(ctx.message.text);
-          const metadata = await metaplex.nfts().findByMint({ mintAddress: mint });
-          if (metadata) {
-            let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
-            msg += `<b>🌐 Detected network:</b> <b>Solana</b>\n`;
-            msg += `🔹 <b>Token:</b> <b>${metadata.name} (${metadata.symbol})</b>\n`;
-            msg += `<b>➡️ Next:</b> Use the options below.`;
-            safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
-            safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
-            session.tokenAddress = ctx.message.text;
-            session.tradeNetwork = 'Solana';
-            session.lastStep = session.step;
-            session.step = undefined;
-            userSessions[ctx.from.id] = session;
-            return;
-          }
-        } catch (e2) {
-          safeReplyWithHTML(ctx, 'Could not detect token info from Dex Screener or Metaplex. Please check the address and try again.', ENTER_TOKEN_MENU);
-          return;
-        }
-      } else {
-      safeReplyWithHTML(ctx, 'Could not detect network from Dex Screener. Please check the address and try again.', ENTER_TOKEN_MENU);
+      // Dex Screener did not detect network, show fallback message and menu
+      let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
+      msg += `<b>⚠️ Token not found on Dex Screener. This token may have very low liquidity or is not listed.\nProceed with caution.</b>\n`;
+      msg += '\n<b>➡️ Next:</b> Use the options below.';
+      safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+      safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
+      session.tokenAddress = ctx.message.text;
+      session.tradeNetwork = getNetworkFromAddress(ctx.message.text, session) || 'Unknown';
+      session.lastStep = session.step;
+      session.step = undefined;
+      userSessions[ctx.from.id] = session;
       return;
-      }
     }
     session.tokenAddress = ctx.message.text;
     session.tradeNetwork = net;
@@ -1254,70 +1216,32 @@ bot.on('text', async (ctx) => {
       }
     } catch (e) {
       console.error('Error fetching from Dex Screener:', e);
-      // Dex Screener failed, try Metaplex for Solana tokens
-      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(ctx.message.text)) {
-        try {
-          const { Metaplex } = await import('@metaplex-foundation/js');
-          const { Connection, PublicKey } = await import('@solana/web3.js');
-          const connection = new Connection(SOLANA_RPC);
-          const metaplex = Metaplex.make(connection);
-          const mint = new PublicKey(ctx.message.text);
-          const metadata = await metaplex.nfts().findByMint({ mintAddress: mint });
-          if (metadata) {
-            let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
-            msg += `<b>🌐 Detected network:</b> <b>Solana</b>\n`;
-            msg += `🔹 <b>Token:</b> <b>${metadata.name} (${metadata.symbol})</b>\n`;
-            msg += `<b>➡️ Next:</b> Use the options below.`;
-            safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
-            safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
-            session.tokenAddress = ctx.message.text;
-            session.tradeNetwork = 'Solana';
-            session.lastStep = session.step;
-            session.step = undefined;
-            userSessions[ctx.from.id] = session;
-            return;
-          }
-        } catch (e2) {
-          safeReplyWithHTML(ctx, 'Could not detect token info from Dex Screener or Metaplex. Please check the address and try again.', ENTER_TOKEN_MENU);
-          return;
-        }
-      } else {
-        safeReplyWithHTML(ctx, 'Could not detect network from Dex Screener. Please check the address and try again.', ENTER_TOKEN_MENU);
-        return;
-      }
+      // Dex Screener failed, show fallback message and menu
+      let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
+      msg += `<b>⚠️ Token not found on Dex Screener. This token may have very low liquidity or is not listed.\nProceed with caution.</b>\n`;
+      msg += '\n<b>➡️ Next:</b> Use the options below.';
+      safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+      safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
+      session.tokenAddress = ctx.message.text;
+      session.tradeNetwork = getNetworkFromAddress(ctx.message.text, session) || 'Unknown';
+      session.lastStep = session.step;
+      session.step = undefined;
+      userSessions[ctx.from.id] = session;
+      return;
     }
     if (!net) {
-      // Try Metaplex for Solana tokens if not already tried
-      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(ctx.message.text)) {
-        try {
-          const { Metaplex } = await import('@metaplex-foundation/js');
-          const { Connection, PublicKey } = await import('@solana/web3.js');
-          const connection = new Connection(SOLANA_RPC);
-          const metaplex = Metaplex.make(connection);
-          const mint = new PublicKey(ctx.message.text);
-          const metadata = await metaplex.nfts().findByMint({ mintAddress: mint });
-          if (metadata) {
-            let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
-            msg += `<b>🌐 Detected network:</b> <b>Solana</b>\n`;
-            msg += `🔹 <b>Token:</b> <b>${metadata.name} (${metadata.symbol})</b>\n`;
-            msg += `<b>➡️ Next:</b> Use the options below.`;
-            safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
-            safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
-            session.tokenAddress = ctx.message.text;
-            session.tradeNetwork = 'Solana';
-            session.lastStep = session.step;
-            session.step = undefined;
-            userSessions[ctx.from.id] = session;
-            return;
-          }
-        } catch (e2) {
-          safeReplyWithHTML(ctx, 'Could not detect token info from Dex Screener or Metaplex. Please check the address and try again.', ENTER_TOKEN_MENU);
-          return;
-        }
-      } else {
-        safeReplyWithHTML(ctx, 'Could not detect network from Dex Screener. Please check the address and try again.', ENTER_TOKEN_MENU);
-        return;
-      }
+      // Dex Screener did not detect network, show fallback message and menu
+      let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
+      msg += `<b>⚠️ Token not found on Dex Screener. This token may have very low liquidity or is not listed.\nProceed with caution.</b>\n`;
+      msg += '\n<b>➡️ Next:</b> Use the options below.';
+      safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+      safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
+      session.tokenAddress = ctx.message.text;
+      session.tradeNetwork = getNetworkFromAddress(ctx.message.text, session) || 'Unknown';
+      session.lastStep = session.step;
+      session.step = undefined;
+      userSessions[ctx.from.id] = session;
+      return;
     }
     session.tokenAddress = ctx.message.text;
     session.tradeNetwork = net;
