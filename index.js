@@ -417,13 +417,36 @@ const START_VOLUME_MENU = Markup.keyboard([
   ['Back to Main']
 ]).resize();
 
-function getBuySellMenu() {
+// Add a function to get the current speed label
+function getCurrentSpeedLabel(session) {
+  if (session.selectedSpeed) return session.selectedSpeed.label;
+  return 'Set Speed';
+}
+
+// Update getBuySellMenu to include a speed button with the current speed
+function getBuySellMenu(session) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('Buy', 'buy_tokens')],
-    [Markup.button.callback('Dump It', 'dump_tokens')],
-    [Markup.button.callback('TRX', 'trx_buy')],
-    [Markup.button.callback('👛 Show Wallets', 'show_wallets_inline')],
-    [Markup.button.callback('Back to Main', 'back_to_main_inline')]
+    [
+      Markup.button.callback('Buy', 'buy_tokens'),
+      Markup.button.callback('Dump It', 'dump_tokens')
+    ],
+    [
+      Markup.button.callback(`Speed: ${getCurrentSpeedLabel(session)}`, 'show_speed_menu'),
+      Markup.button.callback('TRX', 'trx_buy')
+    ],
+    [
+      Markup.button.callback('👛 Show Wallets', 'show_wallets_inline'),
+      Markup.button.callback('Back to Main', 'back_to_main_inline')
+    ]
+  ]);
+}
+
+function getSpeedMenu() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🐢 Slow (4 trx/20s)', 'speed_slow')],
+    [Markup.button.callback('🚗 Moderate (9 trx/20s)', 'speed_moderate')],
+    [Markup.button.callback('🚀 Fast (12 trx/20s)', 'speed_fast')],
+    [Markup.button.callback('Back', 'back_to_buysell_menu')]
   ]);
 }
 
@@ -673,7 +696,7 @@ bot.on('text', async (ctx) => {
     session.buyAmount = amount;
     session.step = undefined;
     userSessions[ctx.from.id] = session;
-    safeReplyWithHTML(ctx, `Amount per buy transaction set to <b>${amount}</b> ${session.tradeNetwork === 'Ethereum' ? 'ETH' : session.tradeNetwork === 'BSC' ? 'BNB' : 'SOL'}.\nYou can now Buy or Dump tokens.`, getBuySellMenu());
+    safeReplyWithHTML(ctx, `Amount per buy transaction set to <b>${amount}</b> ${session.tradeNetwork === 'Ethereum' ? 'ETH' : session.tradeNetwork === 'BSC' ? 'BNB' : 'SOL'}.\nYou can now Buy or Dump tokens.`, getBuySellMenu(session));
     return;
   }
   if (session.step === 'await_wallet_count') {
@@ -760,12 +783,70 @@ bot.on('text', async (ctx) => {
       }
     } catch (e) {
       console.error('Error fetching from Dex Screener:', e);
-      safeReplyWithHTML(ctx, 'An error occurred while checking the token address. Please try again later or check your address.', ENTER_TOKEN_MENU);
+      // Dex Screener failed, try Metaplex for Solana tokens
+      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(ctx.message.text)) {
+        try {
+          const { Metaplex } = await import('@metaplex-foundation/js');
+          const { Connection, PublicKey } = await import('@solana/web3.js');
+          const connection = new Connection(SOLANA_RPC);
+          const metaplex = Metaplex.make(connection);
+          const mint = new PublicKey(ctx.message.text);
+          const metadata = await metaplex.nfts().findByMint({ mintAddress: mint });
+          if (metadata) {
+            let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
+            msg += `<b>🌐 Detected network:</b> <b>Solana</b>\n`;
+            msg += `🔹 <b>Token:</b> <b>${metadata.name} (${metadata.symbol})</b>\n`;
+            msg += `<b>➡️ Next:</b> Use the options below.`;
+            safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+            safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
+            session.tokenAddress = ctx.message.text;
+            session.tradeNetwork = 'Solana';
+            session.lastStep = session.step;
+            session.step = undefined;
+            userSessions[ctx.from.id] = session;
       return;
+          }
+        } catch (e2) {
+          safeReplyWithHTML(ctx, 'Could not detect token info from Dex Screener or Metaplex. Please check the address and try again.', ENTER_TOKEN_MENU);
+          return;
+        }
+      } else {
+        safeReplyWithHTML(ctx, 'Could not detect network from Dex Screener. Please check the address and try again.', ENTER_TOKEN_MENU);
+        return;
+      }
     }
     if (!net) {
+      // Try Metaplex for Solana tokens if not already tried
+      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(ctx.message.text)) {
+        try {
+          const { Metaplex } = await import('@metaplex-foundation/js');
+          const { Connection, PublicKey } = await import('@solana/web3.js');
+          const connection = new Connection(SOLANA_RPC);
+          const metaplex = Metaplex.make(connection);
+          const mint = new PublicKey(ctx.message.text);
+          const metadata = await metaplex.nfts().findByMint({ mintAddress: mint });
+          if (metadata) {
+            let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
+            msg += `<b>🌐 Detected network:</b> <b>Solana</b>\n`;
+            msg += `🔹 <b>Token:</b> <b>${metadata.name} (${metadata.symbol})</b>\n`;
+            msg += `<b>➡️ Next:</b> Use the options below.`;
+            safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+            safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
+            session.tokenAddress = ctx.message.text;
+            session.tradeNetwork = 'Solana';
+            session.lastStep = session.step;
+            session.step = undefined;
+            userSessions[ctx.from.id] = session;
+            return;
+          }
+        } catch (e2) {
+          safeReplyWithHTML(ctx, 'Could not detect token info from Dex Screener or Metaplex. Please check the address and try again.', ENTER_TOKEN_MENU);
+          return;
+        }
+      } else {
       safeReplyWithHTML(ctx, 'Could not detect network from Dex Screener. Please check the address and try again.', ENTER_TOKEN_MENU);
       return;
+      }
     }
     session.tokenAddress = ctx.message.text;
     session.tradeNetwork = net;
@@ -792,8 +873,9 @@ bot.on('text', async (ctx) => {
     } else {
       msg += `\n<b>⚠️ No wallets found for ${net}. Please generate wallets first.</b>\n`;
     }
-    msg += '\n<b>➡️ Next:</b> Click <b>Start Volume Bot</b> to begin.';
-    safeReplyWithHTML(ctx, msg, START_VOLUME_MENU);
+    msg += '\n<b>➡️ Next:</b> Use the options below.';
+    safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+    safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
     session.lastStep = session.step;
     session.step = undefined;
     userSessions[ctx.from.id] = session;
@@ -810,12 +892,55 @@ bot.on('callback_query', async (ctx) => {
   const session = getUserSession(ctx);
   const data = ctx.callbackQuery.data;
   if (data === 'buy_tokens') {
-    if (!session.buySellReady) {
-      ctx.answerCbQuery('Please start the volume bot first.');
+    // --- Check for required session data ---
+    if (!session.tradeNetwork || !session.tokenAddress) {
+      await safeReplyWithHTML(ctx, 'Please enter a token mint address first.', START_VOLUME_MENU);
+      ctx.answerCbQuery();
+      return;
+    }
+    const wallets = (session.wallets && session.wallets[session.tradeNetwork]) || [];
+    if (!wallets.length) {
+      await safeReplyWithHTML(ctx, 'No wallets generated for this network. Please generate wallets first.', MAIN_MENU);
+      ctx.answerCbQuery();
+      return;
+    }
+    // Check at least one wallet funded
+    let anyFunded = false;
+    for (let w of wallets) {
+      let bal = await getWalletBalance(session.tradeNetwork, w.public);
+      if (bal !== 'Error' && parseFloat(bal) >= 0.01) anyFunded = true;
+    }
+    if (!anyFunded) {
+      await safeReplyWithHTML(ctx, '❌ <b>All wallets have zero or insufficient balance. Please fund your wallets before buying.</b>', START_VOLUME_MENU);
+      ctx.answerCbQuery();
+      return;
+    }
+    if (!session.selectedSpeed) {
+      await safeReplyWithHTML(ctx, 'Choose transaction speed:', getSpeedMenu());
+      ctx.answerCbQuery();
+      return;
+    }
+    if (!session.slippage) {
+      session.step = 'await_slippage';
+      await safeReplyWithHTML(ctx, 'Enter slippage % (e.g. 0.5 for 0.5%, max 50, min 0.1, default 1):', Markup.keyboard([
+        ['Use Default (1%)'],
+        ['Back to Main']
+      ]).resize());
+      userSessions[ctx.from.id] = session;
+      ctx.answerCbQuery();
+      return;
+    }
+    if (!session.buyAmount) {
+      session.step = 'await_buy_amount';
+      await safeReplyWithHTML(ctx, `How much ${session.tradeNetwork === 'Ethereum' ? 'ETH' : session.tradeNetwork === 'BSC' ? 'BNB' : 'SOL'} do you want to use for each buy transaction? (Default: 0.001)`, Markup.keyboard([
+        ['Use Default (0.001)'],
+        ['Back to Main']
+      ]).resize());
+      userSessions[ctx.from.id] = session;
+      ctx.answerCbQuery();
       return;
     }
     // --- Buy Logic (real transactions) ---
-    const wallets = (session.wallets && session.wallets[session.tradeNetwork]) || [];
     let txPerWalletPerRound = 1;
     if (session.selectedSpeed && session.selectedSpeed.value === 'moderate') txPerWalletPerRound = 2;
     if (session.selectedSpeed && session.selectedSpeed.value === 'fast') txPerWalletPerRound = 4;
@@ -841,20 +966,63 @@ bot.on('callback_query', async (ctx) => {
           sent++;
         }
       }
-      safeReplyWithHTML(ctx, `<b>${sent}/${totalTx}</b> buy transactions sent...`, getBuySellMenu());
+      await safeReplyWithHTML(ctx, `<b>${sent}/${totalTx}</b> buy transactions sent...`, getBuySellMenu(session));
       if (sent < totalTx) {
         await new Promise(r => setTimeout(r, 20000));
       }
     }
-    safeReplyWithHTML(ctx, '✅ <b>Buy operation complete!</b> You can now Dump tokens or check TRX.', getBuySellMenu());
+    await safeReplyWithHTML(ctx, '✅ <b>Buy operation complete!</b> You can now Dump tokens or check TRX.', getBuySellMenu(session));
     ctx.answerCbQuery('Buy complete!');
   } else if (data === 'dump_tokens') {
-    if (!session.buySellReady) {
-      ctx.answerCbQuery('Please start the volume bot first.');
+    // --- Check for required session data ---
+    if (!session.tradeNetwork || !session.tokenAddress) {
+      await safeReplyWithHTML(ctx, 'Please enter a token mint address first.', START_VOLUME_MENU);
+      ctx.answerCbQuery();
+      return;
+    }
+    const wallets = (session.wallets && session.wallets[session.tradeNetwork]) || [];
+    if (!wallets.length) {
+      await safeReplyWithHTML(ctx, 'No wallets generated for this network. Please generate wallets first.', MAIN_MENU);
+      ctx.answerCbQuery();
+      return;
+    }
+    // Check at least one wallet funded
+    let anyFunded = false;
+    for (let w of wallets) {
+      let bal = await getWalletBalance(session.tradeNetwork, w.public);
+      if (bal !== 'Error' && parseFloat(bal) >= 0.01) anyFunded = true;
+    }
+    if (!anyFunded) {
+      await safeReplyWithHTML(ctx, '❌ <b>All wallets have zero or insufficient balance. Please fund your wallets before selling.</b>', START_VOLUME_MENU);
+      ctx.answerCbQuery();
+      return;
+    }
+    if (!session.selectedSpeed) {
+      await safeReplyWithHTML(ctx, 'Choose transaction speed:', getSpeedMenu());
+      ctx.answerCbQuery();
+      return;
+    }
+    if (!session.slippage) {
+      session.step = 'await_slippage';
+      await safeReplyWithHTML(ctx, 'Enter slippage % (e.g. 0.5 for 0.5%, max 50, min 0.1, default 1):', Markup.keyboard([
+        ['Use Default (1%)'],
+        ['Back to Main']
+      ]).resize());
+      userSessions[ctx.from.id] = session;
+      ctx.answerCbQuery();
+      return;
+    }
+    if (!session.buyAmount) {
+      session.step = 'await_buy_amount';
+      await safeReplyWithHTML(ctx, `How much ${session.tradeNetwork === 'Ethereum' ? 'ETH' : session.tradeNetwork === 'BSC' ? 'BNB' : 'SOL'} do you want to use for each sell transaction? (Default: 0.001)`, Markup.keyboard([
+        ['Use Default (0.001)'],
+        ['Back to Main']
+      ]).resize());
+      userSessions[ctx.from.id] = session;
+      ctx.answerCbQuery();
       return;
     }
     // --- Sell Logic (real transactions, with gas safety check) ---
-    const wallets = (session.wallets && session.wallets[session.tradeNetwork]) || [];
     let txPerWalletPerRound = 1;
     if (session.selectedSpeed && session.selectedSpeed.value === 'moderate') txPerWalletPerRound = 2;
     if (session.selectedSpeed && session.selectedSpeed.value === 'fast') txPerWalletPerRound = 4;
@@ -888,23 +1056,307 @@ bot.on('callback_query', async (ctx) => {
           sent++;
         }
       }
-      safeReplyWithHTML(ctx, `<b>${sent}/${totalTx}</b> sell transactions sent...`, getTrxSellMenu());
+      await safeReplyWithHTML(ctx, `<b>${sent}/${totalTx}</b> sell transactions sent...`, getBuySellMenu(session));
       if (sent < totalTx) {
         await new Promise(r => setTimeout(r, 20000));
       }
     }
-    let summary = '✅ <b>Dump successful. Bot stopped.</b> See TRX Sell for details.';
+    let summary = '✅ <b>Dump successful.</b> See TRX for details.';
     if (skippedWallets.length) {
       summary += `\n\n<b>Skipped wallets (low balance):</b>\n`;
       for (const w of skippedWallets) summary += `<code>${w}</code>\n`;
     }
-    safeReplyWithHTML(ctx, summary, getTrxSellMenu());
-    session.activeVolume[session.tradeNetwork] = false;
-    session.buySellReady = false;
+    await safeReplyWithHTML(ctx, summary, getBuySellMenu(session));
     ctx.answerCbQuery('Dump complete!');
   } else if (data === 'trx_buy') {
-    // ... existing code ...
+    // Show buy and sell transactions for the current network
+    let msg = '<b>Buy Transactions:</b>\n';
+    const buyTxs = (session.lastTxs && session.lastTxs[session.tradeNetwork]) || [];
+    if (buyTxs.length) {
+      for (const tx of buyTxs) msg += `${tx}\n`;
+    } else {
+      msg += 'No buy transactions yet.\n';
+    }
+    msg += '\n<b>Sell Transactions:</b>\n';
+    const sellTxs = (session.lastSellTxs && session.lastSellTxs[session.tradeNetwork]) || [];
+    if (sellTxs.length) {
+      for (const tx of sellTxs) msg += `${tx}\n`;
+    } else {
+      msg += 'No sell transactions yet.';
+    }
+    await safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+    ctx.answerCbQuery();
+  } else if (data === 'show_speed_menu') {
+    await safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
+    ctx.answerCbQuery();
+  } else if (data === 'back_to_buysell_menu') {
+    await safeReplyWithHTML(ctx, 'Back to buy/sell menu.', getBuySellMenu(session));
+    ctx.answerCbQuery();
+  } else if (data === 'speed_slow') {
+    session.selectedSpeed = { label: '🐢 Slow (4 trx/20s)', value: 'slow', rate: 4 };
+    userSessions[ctx.from.id] = session;
+    await safeReplyWithHTML(ctx, 'Speed set to Slow (4 trx/20s).', getBuySellMenu(session));
+    ctx.answerCbQuery();
+  } else if (data === 'speed_moderate') {
+    session.selectedSpeed = { label: '🚗 Moderate (9 trx/20s)', value: 'moderate', rate: 9 };
+    userSessions[ctx.from.id] = session;
+    await safeReplyWithHTML(ctx, 'Speed set to Moderate (9 trx/20s).', getBuySellMenu(session));
+    ctx.answerCbQuery();
+  } else if (data === 'speed_fast') {
+    session.selectedSpeed = { label: '🚀 Fast (12 trx/20s)', value: 'fast', rate: 12 };
+    userSessions[ctx.from.id] = session;
+    await safeReplyWithHTML(ctx, 'Speed set to Fast (12 trx/20s).', getBuySellMenu(session));
+    ctx.answerCbQuery();
   }
+});
+
+bot.on('text', async (ctx) => {
+  const session = getUserSession(ctx);
+  if (ctx.message.text === 'Back to Main') {
+    session.lastStep = session.step;
+    session.step = undefined;
+    safeReplyWithHTML(ctx, 'Back to main menu.', MAIN_MENU);
+    userSessions[ctx.from.id] = session;
+    return;
+  }
+  if (ctx.message.text === 'Go Back' && session.lastStep) {
+    session.step = session.lastStep;
+    safeReplyWithHTML(ctx, 'Returning to previous step...', Markup.keyboard([
+      ['Back to Main']
+    ]).resize());
+    userSessions[ctx.from.id] = session;
+    return;
+  }
+  if (session.step === 'await_slippage') {
+    let slippage = 1;
+    if (ctx.message.text === 'Use Default (1%)') {
+      slippage = 1;
+    } else {
+      slippage = parseFloat(ctx.message.text);
+      if (isNaN(slippage) || slippage < 0.1 || slippage > 50) {
+        safeReplyWithHTML(ctx, 'Please enter a valid slippage between 0.1 and 50.', Markup.keyboard([
+          ['Use Default (1%)'],
+          ['Back to Main']
+        ]).resize());
+        return;
+      }
+    }
+    session.slippage = slippage;
+    session.step = 'await_buy_amount';
+    userSessions[ctx.from.id] = session;
+    safeReplyWithHTML(ctx, `Slippage set to <b>${slippage}%</b>.\nHow much ${session.tradeNetwork === 'Ethereum' ? 'ETH' : session.tradeNetwork === 'BSC' ? 'BNB' : 'SOL'} do you want to use for each buy transaction? (Default: 0.001)`, Markup.keyboard([
+      ['Use Default (0.001)'],
+      ['Back to Main']
+    ]).resize());
+    return;
+  }
+  if (session.step === 'await_buy_amount') {
+    let amount = 0.001;
+    if (ctx.message.text === 'Use Default (0.001)') {
+      amount = 0.001;
+    } else {
+      amount = parseFloat(ctx.message.text);
+      if (isNaN(amount) || amount < 0.0001 || amount > 10.0) {
+        safeReplyWithHTML(ctx, 'Please enter a valid amount between 0.0001 and 10.0.', Markup.keyboard([
+          ['Use Default (0.001)'],
+          ['Back to Main']
+        ]).resize());
+        return;
+      }
+    }
+    session.buyAmount = amount;
+    session.step = undefined;
+    userSessions[ctx.from.id] = session;
+    safeReplyWithHTML(ctx, `Amount per buy transaction set to <b>${amount}</b> ${session.tradeNetwork === 'Ethereum' ? 'ETH' : session.tradeNetwork === 'BSC' ? 'BNB' : 'SOL'}.\nYou can now Buy or Dump tokens.`, getBuySellMenu(session));
+    return;
+  }
+  if (session.step === 'await_wallet_count') {
+    let count = parseInt(ctx.message.text);
+    if (isNaN(count) || count < 1 || count > 20) {
+      return safeReplyWithHTML(ctx, 'Please enter a valid number between 1 and 20.', Markup.keyboard([
+        ['Back to Main']
+      ]).resize());
+    }
+    session.walletCount = count;
+    session.lastStep = session.step;
+    session.step = 'await_wallet_network';
+    safeReplyWithHTML(ctx, 'Select the network for wallet generation:', Markup.keyboard([
+      NETWORKS,
+      ['Back to Main']
+    ]).resize());
+    userSessions[ctx.from.id] = session;
+    return;
+  }
+  if (session.step === 'await_wallet_network') {
+    if (!NETWORKS.includes(ctx.message.text)) {
+      return safeReplyWithHTML(ctx, 'Please select a valid network.', Markup.keyboard([
+        ['Back to Main']
+      ]).resize());
+    }
+    session.walletNetwork = ctx.message.text;
+    let wallets = [];
+    if (session.walletNetwork === 'Solana') {
+      for (let i = 0; i < session.walletCount; i++) {
+        const kp = SolanaKeypair.generate();
+        wallets.push({ public: kp.publicKey.toBase58(), private: Buffer.from(kp.secretKey).toString('hex') });
+      }
+    } else if (session.walletNetwork === 'Ethereum' || session.walletNetwork === 'BSC') {
+      for (let i = 0; i < session.walletCount; i++) {
+        const web3 = new Web3();
+        const acc = web3.eth.accounts.create();
+        wallets.push({ public: acc.address, private: acc.privateKey });
+      }
+    }
+    if (!session.wallets) session.wallets = {};
+    session.wallets[session.walletNetwork] = wallets;
+    userSessions[ctx.from.id] = session;
+    safeReplyWithHTML(
+      ctx,
+      `<b>${session.walletCount} wallets generated on ${session.walletNetwork}:</b>\n\n${formatWalletList(wallets, session.walletNetwork)}`,
+      ENTER_TOKEN_MENU
+    );
+    session.lastStep = session.step;
+    session.step = undefined;
+    safeReplyWithHTML(ctx, 'Please fund your wallets and enter the token mint address to start the volume bot.', ENTER_TOKEN_MENU);
+    return;
+  }
+  if (session.step === 'await_token_address') {
+    console.log('await_token_address handler triggered for user:', ctx.from.id, 'input:', ctx.message.text);
+    // Use Dex Screener API to detect network
+    let net = null;
+    let price = 'N/A', volume = 'N/A', found = false, chainName = '', tokenName = '', tokenSymbol = '';
+    try {
+      const resp = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${ctx.message.text}`);
+      const data = await resp.json();
+      if (data.pairs && data.pairs.length > 0) {
+        // Use the first pair's chainId or chainName for network detection
+        const pair = data.pairs[0];
+        if (pair.chainId) {
+          if (pair.chainId.toLowerCase().includes('bsc')) net = 'BSC';
+          else if (pair.chainId.toLowerCase().includes('eth')) net = 'Ethereum';
+          else if (pair.chainId.toLowerCase().includes('sol')) net = 'Solana';
+          chainName = pair.chainId;
+        } else if (pair.chainName) {
+          if (pair.chainName.toLowerCase().includes('bsc')) net = 'BSC';
+          else if (pair.chainName.toLowerCase().includes('eth')) net = 'Ethereum';
+          else if (pair.chainName.toLowerCase().includes('sol')) net = 'Solana';
+          chainName = pair.chainName;
+        }
+        if (pair.baseToken) {
+          tokenName = pair.baseToken.name || '';
+          tokenSymbol = pair.baseToken.symbol || '';
+        }
+        if (pair.priceUsd && pair.volume && pair.volume.h24) {
+          price = pair.priceUsd;
+          volume = pair.volume.h24;
+          found = true;
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching from Dex Screener:', e);
+      // Dex Screener failed, try Metaplex for Solana tokens
+      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(ctx.message.text)) {
+        try {
+          const { Metaplex } = await import('@metaplex-foundation/js');
+          const { Connection, PublicKey } = await import('@solana/web3.js');
+          const connection = new Connection(SOLANA_RPC);
+          const metaplex = Metaplex.make(connection);
+          const mint = new PublicKey(ctx.message.text);
+          const metadata = await metaplex.nfts().findByMint({ mintAddress: mint });
+          if (metadata) {
+            let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
+            msg += `<b>🌐 Detected network:</b> <b>Solana</b>\n`;
+            msg += `🔹 <b>Token:</b> <b>${metadata.name} (${metadata.symbol})</b>\n`;
+            msg += `<b>➡️ Next:</b> Use the options below.`;
+            safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+            safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
+            session.tokenAddress = ctx.message.text;
+            session.tradeNetwork = 'Solana';
+            session.lastStep = session.step;
+            session.step = undefined;
+            userSessions[ctx.from.id] = session;
+            return;
+          }
+        } catch (e2) {
+          safeReplyWithHTML(ctx, 'Could not detect token info from Dex Screener or Metaplex. Please check the address and try again.', ENTER_TOKEN_MENU);
+          return;
+        }
+      } else {
+        safeReplyWithHTML(ctx, 'Could not detect network from Dex Screener. Please check the address and try again.', ENTER_TOKEN_MENU);
+        return;
+      }
+    }
+    if (!net) {
+      // Try Metaplex for Solana tokens if not already tried
+      if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(ctx.message.text)) {
+        try {
+          const { Metaplex } = await import('@metaplex-foundation/js');
+          const { Connection, PublicKey } = await import('@solana/web3.js');
+          const connection = new Connection(SOLANA_RPC);
+          const metaplex = Metaplex.make(connection);
+          const mint = new PublicKey(ctx.message.text);
+          const metadata = await metaplex.nfts().findByMint({ mintAddress: mint });
+          if (metadata) {
+            let msg = `<b>🎯 Token address set:</b> <code>${ctx.message.text}</code>\n`;
+            msg += `<b>🌐 Detected network:</b> <b>Solana</b>\n`;
+            msg += `🔹 <b>Token:</b> <b>${metadata.name} (${metadata.symbol})</b>\n`;
+            msg += `<b>➡️ Next:</b> Use the options below.`;
+            safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+            safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
+            session.tokenAddress = ctx.message.text;
+            session.tradeNetwork = 'Solana';
+            session.lastStep = session.step;
+            session.step = undefined;
+            userSessions[ctx.from.id] = session;
+            return;
+          }
+        } catch (e2) {
+          safeReplyWithHTML(ctx, 'Could not detect token info from Dex Screener or Metaplex. Please check the address and try again.', ENTER_TOKEN_MENU);
+          return;
+        }
+      } else {
+        safeReplyWithHTML(ctx, 'Could not detect network from Dex Screener. Please check the address and try again.', ENTER_TOKEN_MENU);
+        return;
+      }
+    }
+    session.tokenAddress = ctx.message.text;
+    session.tradeNetwork = net;
+    // --- Compose visually appealing message ---
+    let msg = `<b>🎯 Token address set:</b> <code>${session.tokenAddress}</code>\n`;
+    msg += `<b>🌐 Detected network:</b> <b>${net}</b> <i>(${chainName})</i>\n`;
+    if (tokenName || tokenSymbol) {
+      msg += `🔹 <b>Token:</b> <b>${tokenName}${tokenSymbol ? ' (' + tokenSymbol + ')' : ''}</b>\n`;
+    }
+    if (found) {
+      msg += `💲 <b>Price:</b> <b>$${price}</b>\n📊 <b>24h Volume:</b> <b>${volume}</b>\n`;
+    } else {
+      msg += `<b>Price and volume not found on Dex Screener.</b>\n`;
+    }
+    // Show wallets for this network
+    const wallets = (session.wallets && session.wallets[net]) || [];
+    if (wallets.length) {
+      msg += `\n<b>👛 Your ${net} wallets:</b>\n`;
+      for (let i = 0; i < wallets.length; i++) {
+        let bal = await getWalletBalance(net, wallets[i].public);
+        msg += `#${i+1} <code>${wallets[i].public}</code>\n`;
+        msg += `   <b>Balance:</b> <code>${bal}</code>\n`;
+      }
+    } else {
+      msg += `\n<b>⚠️ No wallets found for ${net}. Please generate wallets first.</b>\n`;
+    }
+    msg += '\n<b>➡️ Next:</b> Use the options below.';
+    safeReplyWithHTML(ctx, msg, getBuySellMenu(session));
+    safeReplyWithHTML(ctx, 'Choose your transaction speed:', getSpeedMenu());
+    session.lastStep = session.step;
+    session.step = undefined;
+    userSessions[ctx.from.id] = session;
+    return;
+  }
+  // Fallback: unknown input or out-of-sequence
+  safeReplyWithHTML(ctx, 'Sorry, I did not understand that. Please use the menu below.', MAIN_MENU);
+  session.lastStep = session.step;
+  session.step = undefined;
+  userSessions[ctx.from.id] = session;
 });
 
 bot.launch();
