@@ -400,7 +400,9 @@ async function sendSellTx(network, priv, tokenAddress, amount, slippage = 1) {
 // --- Custom Keyboards and Inline Menus ---
 const MAIN_MENU = Markup.keyboard([
   ['🪪 Generate Wallet'],
-  ['👛 Show Wallets']
+  ['🔗 Enter Token Mint Address'],
+  ['👛 Show Wallets'],
+  ['Back to Main']
 ]).resize();
 
 const ENTER_TOKEN_MENU = Markup.keyboard([
